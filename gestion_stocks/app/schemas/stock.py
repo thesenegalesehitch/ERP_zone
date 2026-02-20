@@ -1,24 +1,30 @@
-from pydantic import BaseModel
+"""
+Schémas de validation - Mouvement de Stock
+==========================================
+"""
+
+from pydantic import BaseModel, Field
+from datetime import datetime
 from typing import Optional
 
 
-class StockBase(BaseModel):
-    product_id: int
-    quantity: int = 0
-    reorder_level: int = 10
+class StockMovementBase(BaseModel):
+    """Schéma de base pour un mouvement de stock"""
+    product_id: int = Field(..., description="ID du produit")
+    quantity: int = Field(..., description="Quantité")
+    movement_type: str = Field(..., description="Type: in/out")
+    reference: Optional[str] = Field(None, description="Référence")
 
 
-class StockCreate(StockBase):
+class StockMovementCreate(StockMovementBase):
+    """Schéma pour créer un mouvement"""
     pass
 
 
-class StockUpdate(BaseModel):
-    quantity: Optional[int] = None
-    reorder_level: Optional[int] = None
-
-
-class StockResponse(StockBase):
+class StockMovementResponse(StockMovementBase):
+    """Schéma de réponse"""
     id: int
-    
+    created_at: datetime
+
     class Config:
-        orm_mode = True
+        from_attributes = True
