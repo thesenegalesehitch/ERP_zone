@@ -1,214 +1,241 @@
 """
-Settings Entity - Domain Layer
-Represents application settings.
+Setting Entity for ERP System.
 
-Author: Alexandre Albert Ndour
+This module provides the Setting entity for managing application settings
+following Clean Architecture principles.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, Any, Dict
-import uuid
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Union
+from enum import Enum
 
 
-@dataclass
+class SettingType(str, Enum):
+    """Setting type enumeration."""
+    STRING = "string"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    JSON = "json"
+    SECRET = "secret"
+
+
+class SettingCategory(str, Enum):
+    """Setting category enumeration."""
+    GENERAL = "general"
+    COMPANY = "company"
+    EMAIL = "email"
+    NOTIFICATION = "notification"
+    SECURITY = "security"
+    PAYMENT = "payment"
+    INTEGRATION = "integration"
+    CUSTOM = "custom"
+
+
+class SettingVisibility(str, Enum):
+    """Setting visibility enumeration."""
+    PUBLIC = "public"
+    PRIVATE = "private"
+    ADMIN = "admin"
+
+
+@dataclass(frozen=True)
 class Setting:
     """
-    Setting Entity.
+    Setting entity representing a system/application setting.
     
-    Represents a system configuration setting.
+    This entity follows Clean Architecture principles and is immutable.
+    
+    Attributes:
+        id: Unique identifier for the setting
+        key: Setting key/name
+        value: Setting value
+        setting_type: Type of setting value
+        category: Setting category
+        visibility: Who can view/edit the setting
+        description: Setting description
+        default_value: Default value
+        is_encrypted: Whether value is encrypted
+        is_system: Whether this is a system setting
+        metadata: Additional metadata
+        created_at: Timestamp when created
+        updated_at: Timestamp when last updated
     """
+    id: str
+    key: str
+    value: Any
+    setting_type: SettingType
+    category: SettingCategory
+    visibility: SettingVisibility
+    description: str
+    default_value: Any = None
+    is_encrypted: bool = False
+    is_system: bool = False
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
     
-    # Identity
-    id: uuid.UUID = field(default_factory=uuid.uuid4)
-    key: str = ""
+    def __post_init__(self):
+        """Validate setting after initialization."""
+        if not self.key:
+            raise ValueError("key cannot be empty")
+        if not self.description:
+            raise ValueError("description cannot be empty")
+        if self.setting_type == SettingType.SECRET and not self.is_encrypted:
+            raise ValueError("SECRET type must be encrypted")
     
-    # Value
-    value: Any = None
-    value_type: str = "string"  # string, number, boolean, json
+    @property
+    def is_secret(self) -> bool:
+        """Check if setting is a secret."""
+        return self.setting_type == SettingType.SECRET or self.is_encrypted
     
-    # Metadata
-    category: str = "general"  # general, company, invoice, email, tax, payment
-    description: Optional[str] = None
+    @property
+    def is_editable(self) -> bool:
+        """Check if setting is editable."""
+        return not self.is_system
     
-    # Access
-    is_public: bool = False
-    is_system: bool = False  # System settings cannot be modified
+    @property
+    def masked_value(self) -> str:
+        """Get masked value for secrets."""
+        if self.is_secret:
+            return "****"
+        return str(self.value)
     
-    # Validation
-    validation_rule: Optional[str] = None
-    
-    # Metadata
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_by: Optional[uuid.UUID] = None
-    
-    # ==================== Business Methods ====================
-    
-    def update(self, value: Any, updated_by: uuid.UUID = None) -> None:
-        """Update setting value."""
-        if self.is_system:
-            raise ValueError("Cannot modify system setting")
-        
-        self.value = value
-        self.updated_at = datetime.now(timezone.utc)
-        self.updated_by = updated_by
-    
-    def get_typed_value(self) -> Any:
-        """Get value with proper type."""
-        if self.value_type == "boolean":
-            return str(self.value).lower() in ("true", "1", "yes")
-        elif self.value_type == "number":
-            return float(self.value)
-        elif self.value_type == "json":
-            import json
-            return json.loads(self.value)
-        return self.value
-    
-    # ==================== Factory Methods ====================
-    
-    @classmethod
-    def create(
-        cls,
-        key: str,
-        value: Any,
-        value_type: str = "string",
-        category: str = "general",
-        description: str = None,
-        is_public: bool = False,
-        is_system: bool = False
-    ) -> "Setting":
-        """Factory method to create a setting."""
-        if isinstance(value, dict):
-            value_type = "json"
-            import json
-            value = json.dumps(value)
-        
-        return cls(
-            key=key,
-            value=value,
-            value_type=value_type,
-            category=category,
-            description=description,
-            is_public=is_public,
-            is_system=is_system
-        )
-    
-    @classmethod
-    def create_company_setting(
-        cls,
-        key: str,
-        value: Any,
-        value_type: str = "string"
-    ) -> "Setting":
-        """Create a company setting."""
-        return cls.create(
-            key=f"company.{key}",
-            value=value,
-            value_type=value_type,
-            category="company"
-        )
-    
-    @classmethod
-    def create_invoice_setting(
-        cls,
-        key: str,
-        value: Any,
-        value_type: str = "string"
-    ) -> "Setting":
-        """Create an invoice setting."""
-        return cls.create(
-            key=f"invoice.{key}",
-            value=value,
-            value_type=value_type,
-            category="invoice"
-        )
-    
-    # ==================== Serialization ====================
-    
-    def to_dict(self) -> dict:
-        """Convert to dictionary."""
-        return {
-            "id": str(self.id),
+    def to_dict(self, include_secret: bool = False) -> Dict[str, Any]:
+        """Convert setting to dictionary."""
+        result = {
+            "id": self.id,
             "key": self.key,
-            "value": self.value,
-            "value_type": self.value_type,
-            "category": self.category,
+            "value": self.value if include_secret or not self.is_secret else self.masked_value,
+            "setting_type": self.setting_type.value,
+            "category": self.category.value,
+            "visibility": self.visibility.value,
             "description": self.description,
-            "is_public": self.is_public,
+            "default_value": self.default_value,
+            "is_encrypted": self.is_encrypted,
             "is_system": self.is_system,
+            "metadata": self.metadata,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
+            "is_secret": self.is_secret,
+            "is_editable": self.is_editable
         }
+        return result
 
 
-@dataclass
-class SettingGroup:
-    """
-    SettingGroup Entity.
+class SettingBuilder:
+    """Builder for creating Setting instances."""
     
-    Represents a group of related settings.
-    """
+    def __init__(self):
+        self._id: Optional[str] = None
+        self._key: Optional[str] = None
+        self._value: Any = None
+        self._setting_type: SettingType = SettingType.STRING
+        self._category: SettingCategory = SettingCategory.GENERAL
+        self._visibility: SettingVisibility = SettingVisibility.PRIVATE
+        self._description: Optional[str] = None
+        self._default_value: Any = None
+        self._is_encrypted: bool = False
+        self._is_system: bool = False
+        self._metadata: Dict[str, Any] = {}
     
-    # Identity
-    id: uuid.UUID = field(default_factory=uuid.uuid4)
-    name: str = ""
-    slug: str = ""
-    description: Optional[str] = None
+    def with_id(self, setting_id: str) -> "SettingBuilder":
+        self._id = setting_id
+        return self
     
-    # Display
-    icon: Optional[str] = None
-    display_order: int = 0
+    def with_key(self, key: str) -> "SettingBuilder":
+        self._key = key
+        return self
     
-    # Status
-    is_active: bool = True
+    def with_value(self, value: Any) -> "SettingBuilder":
+        self._value = value
+        return self
     
-    # Settings count
-    _settings: list = field(default_factory=list, repr=False)
+    def with_type(self, setting_type: SettingType) -> "SettingBuilder":
+        self._setting_type = setting_type
+        return self
     
-    def add_setting(self, setting: Setting) -> None:
-        """Add a setting to the group."""
-        self._settings.append(setting)
+    def in_category(self, category: SettingCategory) -> "SettingBuilder":
+        self._category = category
+        return self
     
-    def to_dict(self) -> dict:
-        return {
-            "id": str(self.id),
-            "name": self.name,
-            "slug": self.slug,
-            "description": self.description,
-            "icon": self.icon,
-            "display_order": self.display_order,
-            "is_active": self.is_active,
-            "settings_count": len(self._settings),
-        }
+    def with_visibility(self, visibility: SettingVisibility) -> "SettingBuilder":
+        self._visibility = visibility
+        return self
+    
+    def with_description(self, description: str) -> "SettingBuilder":
+        self._description = description
+        return self
+    
+    def with_default(self, default_value: Any) -> "SettingBuilder":
+        self._default_value = default_value
+        return self
+    
+    def encrypted(self, is_encrypted: bool = True) -> "SettingBuilder":
+        self._is_encrypted = is_encrypted
+        return self
+    
+    def as_system(self, is_system: bool = True) -> "SettingBuilder":
+        self._is_system = is_system
+        return self
+    
+    def with_metadata(self, metadata: Dict[str, Any]) -> "SettingBuilder":
+        self._metadata = metadata
+        return self
+    
+    def build(self) -> Setting:
+        from uuid import uuid4
+        
+        if not self._id:
+            self._id = str(uuid4())
+        if not self._key:
+            raise ValueError("key is required")
+        if not self._description:
+            raise ValueError("description is required")
+        if self._value is None:
+            self._value = self._default_value
+        
+        return Setting(
+            id=self._id,
+            key=self._key,
+            value=self._value,
+            setting_type=self._setting_type,
+            category=self._category,
+            visibility=self._visibility,
+            description=self._description,
+            default_value=self._default_value,
+            is_encrypted=self._is_encrypted,
+            is_system=self._is_system,
+            metadata=self._metadata
+        )
 
 
-# Default system settings
-DEFAULT_SETTINGS = [
-    # Company settings
-    {"key": "company.name", "value": "", "category": "company", "is_system": True},
-    {"key": "company.address", "value": "", "category": "company", "is_system": True},
-    {"key": "company.phone", "value": "", "category": "company", "is_system": True},
-    {"key": "company.email", "value": "", "category": "company", "is_system": True},
-    {"key": "company.website", "value": "", "category": "company", "is_system": True},
-    {"key": "company.tax_id", "value": "", "category": "company", "is_system": True},
+# Factory function
+def create_setting(
+    key: str,
+    description: str,
+    **kwargs
+) -> Setting:
+    """Factory function to create a setting."""
+    builder = SettingBuilder()
+    builder.with_key(key)
+    builder.with_description(description)
     
-    # Invoice settings
-    {"key": "invoice.prefix", "value": "INV", "category": "invoice", "is_system": True},
-    {"key": "invoice.next_number", "value": 1, "value_type": "number", "category": "invoice", "is_system": True},
-    {"key": "invoice.default_due_days", "value": 30, "value_type": "number", "category": "invoice", "is_system": True},
-    {"key": "invoice.default_tax_rate", "value": 20, "value_type": "number", "category": "invoice", "is_system": True},
+    if value := kwargs.get("value"):
+        builder.with_value(value)
+    if setting_type := kwargs.get("setting_type"):
+        builder.with_type(setting_type)
+    if category := kwargs.get("category"):
+        builder.in_category(category)
+    if visibility := kwargs.get("visibility"):
+        builder.with_visibility(visibility)
+    if default_value := kwargs.get("default_value"):
+        builder.with_default(default_value)
+    if is_encrypted := kwargs.get("is_encrypted"):
+        builder.encrypted(is_encrypted)
+    if is_system := kwargs.get("is_system"):
+        builder.as_system(is_system)
+    if metadata := kwargs.get("metadata"):
+        builder.with_metadata(metadata)
     
-    # Order settings
-    {"key": "order.prefix", "value": "ORD", "category": "order", "is_system": True},
-    {"key": "order.auto_confirm", "value": "false", "value_type": "boolean", "category": "order", "is_system": True},
-    
-    # Currency
-    {"key": "currency.default", "value": "EUR", "category": "general", "is_system": True},
-    {"key": "currency.supported", "value": ["EUR", "USD", "GBP"], "value_type": "json", "category": "general", "is_system": True},
-    
-    # Locale
-    {"key": "locale.timezone", "value": "UTC", "category": "general", "is_system": True},
-    {"key": "locale.language", "value": "en", "category": "general", "is_system": True},
-    {"key": "locale.date_format", "value": "YYYY-MM-DD", "category": "general", "is_system": True},
-]
+    return builder.build()
