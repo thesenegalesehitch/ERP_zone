@@ -220,8 +220,8 @@ class Task:
         return delta.days
     
     @property
-    def comment_count(self) """Get number of -> int:
-        comments."""
+    def comment_count(self) -> int:
+        """Get number of comments."""
         return len(self.comments)
     
     @property
