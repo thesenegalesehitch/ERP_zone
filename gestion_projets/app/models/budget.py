@@ -10,21 +10,19 @@ from datetime import datetime, date
 from typing import Optional
 
 
-class ProjectBudgetModel:
-    """Modèle de budget de projet"""
+class BudgetModel:
+    """Modèle de budget"""
     
     def __init__(
         self,
         id: int,
         project_id: int,
         name: str,
-        total_budget: float = 0,
+        total_amount: float = 0,
         currency: str = "XOF",
-        start_date: Optional[date] = None,
+        start_date: date = None,
         end_date: Optional[date] = None,
         status: str = "planifie",
-        spent_amount: float = 0,
-        committed_amount: float = 0,
         notes: Optional[str] = None,
         created_by: int = None,
         created_at: Optional[datetime] = None,
@@ -33,13 +31,11 @@ class ProjectBudgetModel:
         self.id = id
         self.project_id = project_id
         self.name = name
-        self.total_budget = total_budget
+        self.total_amount = total_amount
         self.currency = currency
-        self.start_date = start_date
+        self.start_date = start_date or date.today()
         self.end_date = end_date
         self.status = status
-        self.spent_amount = spent_amount
-        self.committed_amount = committed_amount
         self.notes = notes
         self.created_by = created_by
         self.created_at = created_at or datetime.now()
@@ -51,13 +47,11 @@ class ProjectBudgetModel:
             "id": self.id,
             "project_id": self.project_id,
             "name": self.name,
-            "total_budget": self.total_budget,
+            "total_amount": self.total_amount,
             "currency": self.currency,
             "start_date": self.start_date,
             "end_date": self.end_date,
             "status": self.status,
-            "spent_amount": self.spent_amount,
-            "committed_amount": self.committed_amount,
             "notes": self.notes,
             "created_by": self.created_by,
             "created_at": self.created_at,
@@ -65,38 +59,26 @@ class ProjectBudgetModel:
         }
     
     @classmethod
-    def from_dict(cls, data: dict) -> "ProjectBudgetModel":
+    def from_dict(cls, data: dict) -> "BudgetModel":
         """Crée un modèle depuis un dictionnaire"""
         return cls(
             id=data.get("id", 0),
             project_id=data.get("project_id"),
             name=data.get("name"),
-            total_budget=data.get("total_budget", 0),
+            total_amount=data.get("total_amount", 0),
             currency=data.get("currency", "XOF"),
             start_date=data.get("start_date"),
             end_date=data.get("end_date"),
             status=data.get("status", "planifie"),
-            spent_amount=data.get("spent_amount", 0),
-            committed_amount=data.get("committed_amount", 0),
             notes=data.get("notes"),
             created_by=data.get("created_by"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at")
         )
     
-    def remaining_amount(self) -> float:
-        """Calcule le montant restant"""
-        return self.total_budget - self.spent_amount - self.committed_amount
-    
-    def utilization_percentage(self) -> float:
-        """Calcule le pourcentage d'utilisation"""
-        if self.total_budget == 0:
-            return 0
-        return ((self.spent_amount + self.committed_amount) / self.total_budget) * 100
-    
-    def is_over_budget(self) -> bool:
-        """Vérifie si le budget est dépassé"""
-        return (self.spent_amount + self.committed_amount) > self.total_budget
+    def is_approved(self) -> bool:
+        """Vérifie si approuvé"""
+        return self.status == "approuve"
 
 
 class BudgetCategoryModel:
@@ -109,6 +91,7 @@ class BudgetCategoryModel:
         name: str,
         allocated_amount: float = 0,
         spent_amount: float = 0,
+        currency: str = "XOF",
         notes: Optional[str] = None,
         created_at: Optional[datetime] = None
     ):
@@ -117,6 +100,7 @@ class BudgetCategoryModel:
         self.name = name
         self.allocated_amount = allocated_amount
         self.spent_amount = spent_amount
+        self.currency = currency
         self.notes = notes
         self.created_at = created_at or datetime.now()
     
@@ -128,45 +112,50 @@ class BudgetCategoryModel:
             "name": self.name,
             "allocated_amount": self.allocated_amount,
             "spent_amount": self.spent_amount,
+            "currency": self.currency,
             "notes": self.notes,
             "created_at": self.created_at
         }
     
     def remaining_amount(self) -> float:
-        """Calcule le montant restant"""
+        """Montant restant"""
         return self.allocated_amount - self.spent_amount
     
     def utilization_percentage(self) -> float:
-        """Calcule le pourcentage d'utilisation"""
+        """Pourcentage d'utilisation"""
         if self.allocated_amount == 0:
             return 0
         return (self.spent_amount / self.allocated_amount) * 100
 
 
-class BudgetTransactionModel:
-    """Modèle de transaction budgétaire"""
+class BudgetExpenseModel:
+    """Modèle de dépense de budget"""
     
     def __init__(
         self,
         id: int,
-        budget_id: int,
-        category_id: Optional[int] = None,
+        category_id: int,
+        description: str,
         amount: float = 0,
-        transaction_type: str = "depense",
-        description: Optional[str] = None,
-        transaction_date: Optional[date] = None,
-        reference: Optional[str] = None,
+        currency: str = "XOF",
+        expense_date: date = None,
+        status: str = "en_attente",
+        vendor: Optional[str] = None,
+        invoice_number: Optional[str] = None,
+        notes: Optional[str] = None,
         created_by: int = None,
         created_at: Optional[datetime] = None
     ):
         self.id = id
-        self.budget_id = budget_id
         self.category_id = category_id
-        self.amount = amount
-        self.transaction_type = transaction_type
         self.description = description
-        self.transaction_date = transaction_date
-        self.reference = reference
+        self.amount = amount
+        self.currency = currency
+        self.expense_date = expense_date or date.today()
+        self.status = status
+        self.vendor = vendor
+        self.invoice_number = invoice_number
+        self.notes = notes
         self.created_by = created_by
         self.created_at = created_at or datetime.now()
     
@@ -174,21 +163,19 @@ class BudgetTransactionModel:
         """Convertit le modèle en dictionnaire"""
         return {
             "id": self.id,
-            "budget_id": self.budget_id,
             "category_id": self.category_id,
-            "amount": self.amount,
-            "transaction_type": self.transaction_type,
             "description": self.description,
-            "transaction_date": self.transaction_date,
-            "reference": self.reference,
+            "amount": self.amount,
+            "currency": self.currency,
+            "expense_date": self.expense_date,
+            "status": self.status,
+            "vendor": self.vendor,
+            "invoice_number": self.invoice_number,
+            "notes": self.notes,
             "created_by": self.created_by,
             "created_at": self.created_at
         }
     
-    def is_expense(self) -> bool:
-        """Vérifie si c'est une dépense"""
-        return self.transaction_type == "depense"
-    
-    def is_income(self) -> bool:
-        """Vérifie si c'est un revenu"""
-        return self.transaction_type == "revenu"
+    def is_approved(self) -> bool:
+        """Vérifie si approuvé"""
+        return self.status == "approuve"

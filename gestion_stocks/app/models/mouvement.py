@@ -17,24 +17,22 @@ class StockMovementModel:
         self,
         id: int,
         product_id: int,
+        warehouse_id: int,
         movement_type: str,
         quantity: float = 0,
-        unit_cost: float = 0,
-        total_cost: float = 0,
         reference: Optional[str] = None,
-        movement_date: Optional[date] = None,
+        movement_date: date = None,
         notes: Optional[str] = None,
         created_by: int = None,
         created_at: Optional[datetime] = None
     ):
         self.id = id
         self.product_id = product_id
+        self.warehouse_id = warehouse_id
         self.movement_type = movement_type
         self.quantity = quantity
-        self.unit_cost = unit_cost
-        self.total_cost = total_cost
         self.reference = reference
-        self.movement_date = movement_date
+        self.movement_date = movement_date or date.today()
         self.notes = notes
         self.created_by = created_by
         self.created_at = created_at or datetime.now()
@@ -44,10 +42,9 @@ class StockMovementModel:
         return {
             "id": self.id,
             "product_id": self.product_id,
+            "warehouse_id": self.warehouse_id,
             "movement_type": self.movement_type,
             "quantity": self.quantity,
-            "unit_cost": self.unit_cost,
-            "total_cost": self.total_cost,
             "reference": self.reference,
             "movement_date": self.movement_date,
             "notes": self.notes,
@@ -61,10 +58,9 @@ class StockMovementModel:
         return cls(
             id=data.get("id", 0),
             product_id=data.get("product_id"),
+            warehouse_id=data.get("warehouse_id"),
             movement_type=data.get("movement_type"),
             quantity=data.get("quantity", 0),
-            unit_cost=data.get("unit_cost", 0),
-            total_cost=data.get("total_cost", 0),
             reference=data.get("reference"),
             movement_date=data.get("movement_date"),
             notes=data.get("notes"),
@@ -72,17 +68,13 @@ class StockMovementModel:
             created_at=data.get("created_at")
         )
     
-    def calculate_total(self):
-        """Calcule le coût total"""
-        self.total_cost = self.quantity * self.unit_cost
+    def is_entry(self) -> bool:
+        """Vérifie si entrée"""
+        return self.movement_type in ["entree", "achat", "retour"]
     
-    def is_inflow(self) -> bool:
-        """Vérifie si c'est une entrée"""
-        return self.movement_type in ["entree", "achat", "retour", "ajustement_positif"]
-    
-    def is_outflow(self) -> bool:
-        """Vérifie si c'est une sortie"""
-        return self.movement_type in ["sortie", "vente", "perte", "ajustement_negatif"]
+    def is_exit(self) -> bool:
+        """Vérifie si sortie"""
+        return self.movement_type in ["sortie", "vente", "utilisation"]
 
 
 class StockAdjustmentModel:
@@ -92,64 +84,50 @@ class StockAdjustmentModel:
         self,
         id: int,
         product_id: int,
+        warehouse_id: int,
         adjustment_type: str,
-        quantity_before: float = 0,
-        quantity_after: float = 0,
-        difference: float = 0,
-        reason: Optional[str] = None,
-        reference: Optional[str] = None,
-        adjustment_date: Optional[date] = None,
-        status: str = "en_attente",
+        quantity_before: float,
+        quantity_after: float,
+        reason: str,
+        adjustment_date: date = None,
         approved_by: Optional[int] = None,
+        notes: Optional[str] = None,
         created_by: int = None,
-        created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None
+        created_at: Optional[datetime] = None
     ):
         self.id = id
         self.product_id = product_id
+        self.warehouse_id = warehouse_id
         self.adjustment_type = adjustment_type
         self.quantity_before = quantity_before
         self.quantity_after = quantity_after
-        self.difference = difference
         self.reason = reason
-        self.reference = reference
-        self.adjustment_date = adjustment_date
-        self.status = status
+        self.adjustment_date = adjustment_date or date.today()
         self.approved_by = approved_by
+        self.notes = notes
         self.created_by = created_by
         self.created_at = created_at or datetime.now()
-        self.updated_at = updated_at or datetime.now()
     
     def to_dict(self) -> dict:
         """Convertit le modèle en dictionnaire"""
         return {
             "id": self.id,
             "product_id": self.product_id,
+            "warehouse_id": self.warehouse_id,
             "adjustment_type": self.adjustment_type,
             "quantity_before": self.quantity_before,
             "quantity_after": self.quantity_after,
-            "difference": self.difference,
             "reason": self.reason,
-            "reference": self.reference,
             "adjustment_date": self.adjustment_date,
-            "status": self.status,
             "approved_by": self.approved_by,
+            "notes": self.notes,
             "created_by": self.created_by,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at
+            "created_at": self.created_at
         }
     
-    def calculate_difference(self):
-        """Calcule la différence"""
-        self.difference = self.quantity_after - self.quantity_before
-    
-    def is_increase(self) -> bool:
-        """Vérifie si c'est une augmentation"""
-        return self.difference > 0
-    
-    def is_approved(self) -> bool:
-        """Vérifie si l'ajustement est approuvé"""
-        return self.status == "approuve"
+    def difference(self) -> float:
+        """Différence de quantité"""
+        return self.quantity_after - self.quantity_before
 
 
 class StockCountModel:
@@ -158,57 +136,39 @@ class StockCountModel:
     def __init__(
         self,
         id: int,
-        count_number: str,
         warehouse_id: int,
-        count_date: Optional[date] = None,
+        count_date: date = None,
         status: str = "en_cours",
-        total_products: int = 0,
-        counted_products: int = 0,
-        discrepancies: int = 0,
+        counted_by: Optional[int] = None,
+        verified_by: Optional[int] = None,
         notes: Optional[str] = None,
-        started_by: int = None,
-        completed_by: Optional[int] = None,
         created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None
+        completed_at: Optional[datetime] = None
     ):
         self.id = id
-        self.count_number = count_number
         self.warehouse_id = warehouse_id
-        self.count_date = count_date
+        self.count_date = count_date or date.today()
         self.status = status
-        self.total_products = total_products
-        self.counted_products = counted_products
-        self.discrepancies = discrepancies
+        self.counted_by = counted_by
+        self.verified_by = verified_by
         self.notes = notes
-        self.started_by = started_by
-        self.completed_by = completed_by
         self.created_at = created_at or datetime.now()
-        self.updated_at = updated_at or datetime.now()
+        self.completed_at = completed_at
     
     def to_dict(self) -> dict:
         """Convertit le modèle en dictionnaire"""
         return {
             "id": self.id,
-            "count_number": self.count_number,
             "warehouse_id": self.warehouse_id,
             "count_date": self.count_date,
             "status": self.status,
-            "total_products": self.total_products,
-            "counted_products": self.counted_products,
-            "discrepancies": self.discrepancies,
+            "counted_by": self.counted_by,
+            "verified_by": self.verified_by,
             "notes": self.notes,
-            "started_by": self.started_by,
-            "completed_by": self.completed_by,
             "created_at": self.created_at,
-            "updated_at": self.updated_at
+            "completed_at": self.completed_at
         }
     
-    def completion_percentage(self) -> float:
-        """Calcule le pourcentage d'achèvement"""
-        if self.total_products == 0:
-            return 0
-        return (self.counted_products / self.total_products) * 100
-    
     def is_completed(self) -> bool:
-        """Vérifie si l'inventaire est terminé"""
+        """Vérifie si terminé"""
         return self.status == "termine"
