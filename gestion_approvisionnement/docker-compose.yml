@@ -1,0 +1,12 @@
+# Docker Compose Gestion Approvisionnement
+services:
+  appro-api:
+    build: .
+    container_name: erp-appro-api
+    ports:
+      - "8014:8000"
+    networks:
+      - erp-appro-network
+networks:
+  erp-appro-network:
+    driver: bridge

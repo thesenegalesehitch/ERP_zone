@@ -1,0 +1,12 @@
+# Docker Compose Gestion Clients
+services:
+  clients-api:
+    build: .
+    container_name: erp-clients-api
+    ports:
+      - "8012:8000"
+    networks:
+      - erp-clients-network
+networks:
+  erp-clients-network:
+    driver: bridge

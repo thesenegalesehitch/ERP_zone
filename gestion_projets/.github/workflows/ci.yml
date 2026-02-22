@@ -1,0 +1,209 @@
+# =============================================================================
+# Configuration GitHub Actions pour CI/CD
+# =============================================================================
+# Ce fichier définit le pipeline d'intégration continue et de déploiement
+# pour le module de gestion de projets.
+#
+# Le pipeline exécute:
+#   - Tests unitaires et d'intégration
+#   - Analyse de code (linting)
+#   - Vérification des types
+#   - Construction de l'image Docker
+#   - Déploiement (optionnel)
+# =============================================================================
+
+name: CI/CD - Gestion Projets
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  # =======================================================================
+  # Job: Tests
+  # =======================================================================
+  test:
+    name: Tests unitaires et d'intégration
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+      
+      - name: Configuration Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Installation des dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio httpx
+      
+      - name: Linting - flake8
+        run: |
+          pip install flake8
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      
+      - name: Vérification des types - mypy
+        run: |
+          pip install mypy
+          mypy app --ignore-missing-imports --no-error-summary
+      
+      - name: Exécution des tests
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+          SECRET_KEY: test-secret-key
+        run: |
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
+      
+      - name: Upload des rapports de coverage
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: htmlcov/
+          retention-days: 7
+
+  # =======================================================================
+  # Job: Build Docker
+  # =======================================================================
+  docker-build:
+    name: Construction Docker
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+      
+      - name: Configuration Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login à Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Extraction des métadonnées
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: erpzone/projects-api
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha
+      
+      - name: Build de l'image Docker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=erpzone/projects-api:latest
+          cache-to: type=inline
+      
+      - name: Vérification de l'image
+        run: |
+          docker images
+          docker run --rm erpzone/projects-api:latest python --version
+
+  # =======================================================================
+  # Job: Security Scan
+  # =======================================================================
+  security:
+    name: Analyse de sécurité
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+      
+      - name: Analyse avec Bandit
+        uses: lukehatcher/bandit-action@master
+        with:
+          path: 'app'
+          level: 'medium'
+      
+      - name: Analyse avec Safety
+        run: |
+          pip install safety
+          safety check --json > security-report.json || true
+      
+      - name: Upload du rapport de sécurité
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: security-report.json
+          retention-days: 7
+
+  # =======================================================================
+  # Job: Déploiement (conditionnel)
+  # =======================================================================
+  deploy:
+    name: Déploiement
+    runs-on: ubuntu-latest
+    needs: [docker-build, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+      
+      - name: Déploiement sur serveur
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          echo "Déploiement en production..."
+          # Script de déploiement à implémenter selon l'infrastructure
+          # ssh -o StrictHostKeyChecking=no user@$SERVER_HOST "./deploy.sh"
+
+  # =======================================================================
+  # Job: Notification
+  # =======================================================================
+  notify:
+    name: Notification
+    runs-on: ubuntu-latest
+    needs: [test, docker-build, security]
+    if: always()
+    
+    steps:
+      - name: Notification Slack
+        if: env.SLACK_WEBHOOK != ''
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}

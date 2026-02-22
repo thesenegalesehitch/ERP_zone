@@ -1,0 +1,47 @@
+# =============================================================================
+# Docker Compose - Gestion de Stocks
+# =============================================================================
+
+services:
+  stocks-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: erp-stocks-api
+    restart: unless-stopped
+    ports:
+      - "8004:8000"
+    environment:
+      - DATABASE_URL=postgresql://erpuser:erppassword@postgres:5432/erp_stocks
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - erp-stocks-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: erp-stocks-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=erpuser
+      - POSTGRES_PASSWORD=erppassword
+      - POSTGRES_DB=erp_stocks
+    volumes:
+      - stocks-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    networks:
+      - erp-stocks-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erpuser -d erp_stocks"]
+
+networks:
+  erp-stocks-network:
+    driver: bridge
+
+volumes:
+  stocks-postgres-data:
