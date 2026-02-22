@@ -1,0 +1,19 @@
+# Docker Compose Analytique
+
+services:
+  analytique-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: erp-analytique-api
+    restart: unless-stopped
+    ports:
+      - "8008:8000"
+    environment:
+      - DATABASE_URL=postgresql://erpuser:erppassword@postgres:5432/erp_analytique
+    networks:
+      - erp-analytique-network
+
+networks:
+  erp-analytique-network:
+    driver: bridge

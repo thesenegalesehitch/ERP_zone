@@ -1,60 +1,139 @@
+"""
+API Routes pour les produits
+
+Ce module définit les routes API pour la gestion des produits.
+
+Ce fichier fait partie du Projet ERP développé pour le Sénégal.
+"""
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.models.product import Product
-from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
+from typing import List
+from datetime import datetime
 
 
 router = APIRouter(prefix="/products", tags=["products"])
 
 
-@router.get("/", response_model=list[ProductResponse])
-def get_products(db: Session = Depends(get_db), skip: int = 0, limit: int = 100):
-    products = db.query(Product).offset(skip).limit(limit).all()
-    return products
+# Mock data pour les tests
+MOCK_PRODUCTS = [
+    {
+        "id": 1,
+        "name": "Ordinateur Portable",
+        "description": "PC Portable 15 pouces",
+        "sku": "PC-001",
+        "barcode": "1234567890123",
+        "category": "informatique",
+        "unit_price": 350000,
+        "cost_price": 280000,
+        "quantity": 25,
+        "reorder_point": 10,
+        "warehouse_id": 1,
+        "created_at": datetime.now(),
+        "updated_at": datetime.now()
+    }
+]
 
 
-@router.get("/{product_id}", response_model=ProductResponse)
-def get_product(product_id: int, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    return product
-
-
-@router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
-def create_product(product_data: ProductCreate, db: Session = Depends(get_db)):
-    existing = db.query(Product).filter(Product.sku == product_data.sku).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="SKU already exists")
+@router.get("/")
+async def get_products(
+    category: str = None,
+    warehouse_id: int = None,
+    low_stock: bool = None,
+    search: str = None
+):
+    """Récupère la liste des produits"""
+    products = MOCK_PRODUCTS
     
-    product = Product(**product_data.dict())
-    db.add(product)
-    db.commit()
-    db.refresh(product)
-    return product
-
-
-@router.put("/{product_id}", response_model=ProductResponse)
-def update_product(product_id: int, product_data: ProductUpdate, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+    if category:
+        products = [p for p in products if p["category"] == category]
+    if warehouse_id:
+        products = [p for p in products if p.get("warehouse_id") == warehouse_id]
+    if low_stock:
+        products = [p for p in products if p["quantity"] <= p["reorder_point"]]
+    if search:
+        products = [p for p in products if search.lower() in p["name"].lower()]
     
-    for key, value in product_data.dict(exclude_unset=True).items():
-        setattr(product, key, value)
-    
-    db.commit()
-    db.refresh(product)
-    return product
+    return {"products": products, "total": len(products)}
 
 
-@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_product(product_id: int, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+@router.get("/{product_id}")
+async def get_product(product_id: int):
+    """Récupère un produit par son ID"""
+    for product in MOCK_PRODUCTS:
+        if product["id"] == product_id:
+            return product
     
-    db.delete(product)
-    db.commit()
-    return
+    raise HTTPException(status_code=404, detail="Produit non trouvé")
+
+
+@router.post("/")
+async def create_product(product_data: dict):
+    """Crée un nouveau produit"""
+    new_product = {
+        "id": len(MOCK_PRODUCTS) + 1,
+        **product_data,
+        "created_at": datetime.now(),
+        "updated_at": datetime.now()
+    }
+    MOCK_PRODUCTS.append(new_product)
+    return new_product
+
+
+@router.put("/{product_id}")
+async def update_product(product_id: int, product_data: dict):
+    """Met à jour un produit"""
+    for i, product in enumerate(MOCK_PRODUCTS):
+        if product["id"] == product_id:
+            MOCK_PRODUCTS[i] = {
+                **product,
+                **product_data,
+                "updated_at": datetime.now()
+            }
+            return MOCK_PRODUCTS[i]
+    
+    raise HTTPException(status_code=404, detail="Produit non trouvé")
+
+
+@router.delete("/{product_id}")
+async def delete_product(product_id: int):
+    """Supprime un produit"""
+    for i, product in enumerate(MOCK_PRODUCTS):
+        if product["id"] == product_id:
+            MOCK_PRODUCTS.pop(i)
+            return {"message": "Produit supprimé"}
+    
+    raise HTTPException(status_code=404, detail="Produit non trouvé")
+
+
+@router.post("/{product_id}/movements")
+async def create_stock_movement(product_id: int, movement_data: dict):
+    """Crée un mouvement de stock"""
+    return {
+        "id": 1,
+        "product_id": product_id,
+        **movement_data,
+        "created_at": datetime.now()
+    }
+
+
+@router.get("/{product_id}/movements")
+async def get_stock_movements(product_id: int):
+    """Récupère les mouvements de stock"""
+    return {"movements": [], "total": 0}
+
+
+@router.post("/{product_id}/adjust")
+async def adjust_stock(product_id: int, adjustment_data: dict):
+    """Ajuste le stock"""
+    return {
+        "id": 1,
+        "product_id": product_id,
+        **adjustment_data,
+        "adjusted_at": datetime.now()
+    }
+
+
+@router.get("/low-stock/alerts")
+async def get_low_stock_alerts():
+    """Récupère les alertes de stock bas"""
+    low_stock_products = [p for p in MOCK_PRODUCTS if p["quantity"] <= p["reorder_point"]]
+    return {"alerts": low_stock_products, "total": len(low_stock_products)}

@@ -1,0 +1,47 @@
+# =============================================================================
+# Docker Compose - Comptabilité
+# =============================================================================
+
+services:
+  compta-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: erp-compta-api
+    restart: unless-stopped
+    ports:
+      - "8003:8000"
+    environment:
+      - DATABASE_URL=postgresql://erpuser:erppassword@postgres:5432/erp_compta
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - erp-compta-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: erp-compta-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=erpuser
+      - POSTGRES_PASSWORD=erppassword
+      - POSTGRES_DB=erp_compta
+    volumes:
+      - compta-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    networks:
+      - erp-compta-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erpuser -d erp_compta"]
+
+networks:
+  erp-compta-network:
+    driver: bridge
+
+volumes:
+  compta-postgres-data:
