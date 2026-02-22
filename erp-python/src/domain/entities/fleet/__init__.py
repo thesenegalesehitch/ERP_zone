@@ -408,7 +408,7 @@ def create_vehicle(
     if insurance_expiry := kwargs.get("insurance_expiry"):
         registration_expiry = kwargs.get("registration_expiry")
         builder.with_expiry_dates(insurance_expiry, registration_expiry)
-    if assigned_driver_id := kwargs.get("assigned_driver_id"):"):
+    if assigned_driver_id := kwargs.get("assigned_driver_id"):
         assigned_driver_name = kwargs.get("assigned_driver_name", "")
         builder.with_driver(assigned_driver_id, assigned_driver_name)
     if metadata := kwargs.get("metadata"):
